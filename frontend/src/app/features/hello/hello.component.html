@@ -1,0 +1,46 @@
+<main class="page">
+  <h1 id="hello-title" data-testid="hello-title">Travel Planner</h1>
+  <section
+    class="card"
+    role="region"
+    aria-labelledby="hello-title"
+    data-testid="hello-card"
+    [attr.aria-busy]="state() === 'loading'"
+  >
+    <div aria-live="polite">
+      @switch (state()) {
+        @case ('loading') {
+          <div class="skeleton" data-testid="hello-loading"></div>
+          <span class="visually-hidden">Loading greeting</span>
+        }
+        @case ('success') {
+          <p class="message" data-testid="hello-message">{{ message() }}</p>
+        }
+        @case ('error') {
+          <div class="error" role="alert" data-testid="hello-error">
+            <p class="error-title">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm-.9 4h1.8v6H9.1v-6Zm.9 9.2a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Z"
+                />
+              </svg>
+              Can't reach the server
+            </p>
+            <p class="error-detail">
+              Something went wrong while loading your greeting. Check your connection and try again.
+            </p>
+            <button
+              #retryBtn
+              type="button"
+              class="retry"
+              data-testid="hello-retry"
+              (click)="retry()"
+            >
+              Retry
+            </button>
+          </div>
+        }
+      }
+    </div>
+  </section>
+</main>

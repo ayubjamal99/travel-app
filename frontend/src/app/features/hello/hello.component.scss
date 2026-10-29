@@ -1,0 +1,106 @@
+:host {
+  display: block;
+}
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-4);
+}
+
+@media (min-width: 600px) {
+  .page {
+    padding: var(--space-5);
+  }
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 1.25;
+  margin: 0 0 var(--space-5);
+}
+
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
+}
+
+@media (min-width: 1024px) {
+  .card {
+    max-width: 480px;
+  }
+}
+
+.message {
+  margin: 0;
+  font-size: 20px;
+  color: var(--color-text);
+}
+
+.skeleton {
+  height: 28px;
+  border-radius: var(--radius-s);
+  background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+.error-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.error-detail {
+  margin: 0 0 var(--space-4);
+  font-size: 16px;
+}
+
+.retry {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  font: inherit;
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
