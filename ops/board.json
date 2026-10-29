@@ -1,0 +1,17 @@
+{
+  "repo": "ayubjamal99/travel-app",
+  "owner": "ayubjamal99",
+  "number": 2,
+  "projectId": "PVT_kwHOFNH2584BpPU3",
+  "url": "https://github.com/users/ayubjamal99/projects/2",
+  "fieldName": "Status",
+  "fieldId": "PVTSSF_lAHOFNH2584BpPU3zhnr13k",
+  "options": {
+    "Backlog": "262e29d9",
+    "Ready": "77fe2988",
+    "In Progress": "c4db995e",
+    "QA": "a1c1d0a5",
+    "BA Review": "8f4ee6c7",
+    "Done": "4e736b82"
+  }
+}

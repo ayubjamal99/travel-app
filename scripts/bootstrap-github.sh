@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 TITLE="${BOARD_TITLE:-Travel Planner}"
-COLUMNS=("Backlog" "Ready" "In Progress" "QA" "BA Review" "Done")
+STAGES=("Backlog" "Ready" "In Progress" "QA" "BA Review" "Done")
 COLORS=("GRAY" "BLUE" "YELLOW" "ORANGE" "PURPLE" "GREEN")
 DESCS=("Written, not yet approved or not yet scheduled" "Approved, next up" "UX spec / Dev at work" "QA testing the PR" "BA checking acceptance criteria; then waiting for your merge" "Merged to main")
 
@@ -64,9 +64,9 @@ STATUS_ID=$(fields_json | jq -r '.fields[] | select(.name=="Status") | .id')
 
 # Replace the Status options (Todo/In Progress/Done) with our six columns.
 # GitHub keeps option IDs for options whose names match, so re-running is safe.
-opts=$(for i in "${!COLUMNS[@]}"; do
-  printf '{name:"%s",color:%s,description:"%s"}' "${COLUMNS[$i]}" "${COLORS[$i]}" "${DESCS[$i]}"
-  [ "$i" -lt $((${#COLUMNS[@]}-1)) ] && printf ','
+opts=$(for i in "${!STAGES[@]}"; do
+  printf '{name:"%s",color:%s,description:"%s"}' "${STAGES[$i]}" "${COLORS[$i]}" "${DESCS[$i]}"
+  [ "$i" -lt $((${#STAGES[@]}-1)) ] && printf ',' || true
 done)
 FIELD_NAME="Status"
 if ! gh api graphql -f query="mutation { updateProjectV2Field(input:{fieldId:\"$STATUS_ID\", singleSelectOptions:[$opts]}) { projectV2Field { ... on ProjectV2SingleSelectField { id } } } }" >/dev/null 2>&1; then
@@ -74,14 +74,14 @@ if ! gh api graphql -f query="mutation { updateProjectV2Field(input:{fieldId:\"$
   FIELD_NAME="Stage"
   if ! fields_json | jq -e '.fields[] | select(.name=="Stage")' >/dev/null; then
     gh project field-create "$NUM" --owner "$OWNER" --name Stage --data-type SINGLE_SELECT \
-      --single-select-options "$(IFS=,; echo "${COLUMNS[*]}")" >/dev/null
+      --single-select-options "$(IFS=,; echo "${STAGES[*]}")" >/dev/null
   fi
 fi
 
 FIELD=$(fields_json | jq --arg n "$FIELD_NAME" '.fields[] | select(.name==$n)')
 FIELD_ID=$(jq -r .id <<<"$FIELD")
 OPTIONS=$(jq '[.options[] | {key:.name, value:.id}] | from_entries' <<<"$FIELD")
-for c in "${COLUMNS[@]}"; do
+for c in "${STAGES[@]}"; do
   jq -e --arg c "$c" 'has($c)' <<<"$OPTIONS" >/dev/null || die "column '$c' missing on field $FIELD_NAME"
 done
 
