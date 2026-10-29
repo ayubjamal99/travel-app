@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: backend
+  config:
+    import: optional:file:../.env[.properties],optional:file:.env[.properties]
+  mvc:
+    problemdetails:
+      enabled: true
+
+# Required greeting shown on the hello page. The app refuses to start when empty.
+hello:
+  greeting: ${HELLO_GREETING:}
