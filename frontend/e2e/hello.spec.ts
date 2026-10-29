@@ -17,3 +17,10 @@ test('AC5: backend down shows error with Retry, which recovers', async ({ page }
   await page.getByTestId('hello-retry').click();
   await expect(page.getByTestId('hello-message')).toHaveText('Back again');
 });
+
+test('AC5: non-2xx response shows error with Retry', async ({ page }) => {
+  await page.route('**/api/v1/hello', (route) => route.fulfill({ status: 500, json: { title: 'boom' } }));
+  await page.goto('/');
+  await expect(page.getByTestId('hello-error')).toBeVisible();
+  await expect(page.getByTestId('hello-retry')).toHaveText(/Retry/);
+});
