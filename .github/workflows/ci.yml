@@ -1,0 +1,79 @@
+# The "eval": every PR must pass backend, frontend and secret-scan before it can merge.
+# Jobs always run and report a status, so they can be required checks even before
+# backend/ or frontend/ exist (they just pass with "not present yet").
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          if [ -f backend/pom.xml ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "backend/ not present yet, skipping"; fi
+      - if: steps.detect.outputs.present == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - if: steps.detect.outputs.present == 'true'
+        name: Build and test (unit + Testcontainers integration)
+        run: mvn -B -ntp -f backend/pom.xml verify
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          if [ -f frontend/package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "frontend/ not present yet, skipping"; fi
+      - if: steps.detect.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - if: steps.detect.outputs.present == 'true'
+        working-directory: frontend
+        run: npm ci
+      - if: steps.detect.outputs.present == 'true'
+        working-directory: frontend
+        run: npm run build
+      - if: steps.detect.outputs.present == 'true'
+        working-directory: frontend
+        name: Unit tests
+        run: npm run test:ci --if-present
+      - if: steps.detect.outputs.present == 'true' && hashFiles('frontend/playwright.config.*') != ''
+        working-directory: frontend
+        name: E2E (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e:ci --if-present
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R gitleaks/gitleaks -p '*linux_x64.tar.gz' -O gl.tgz
+          tar -xzf gl.tgz gitleaks
+          ./gitleaks git --redact --no-banner -v .

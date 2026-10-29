@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# agentctl — you control the loop; nothing runs before `agentctl start`.
+#
+#   agentctl start [--resume]   start the PM loop in tmux (or resume a paused one)
+#                               --resume: continue the last PM conversation instead of a fresh one
+#   agentctl pause              every agent halts at its next action and writes the handoff
+#   agentctl resume             same as start on a paused loop
+#   agentctl stop [--now]       halt, let the PM write the handoff, then end the session
+#   agentctl status             state, what is running, last activity, what it waits on
+#   agentctl attach             watch the PM live (detach: Ctrl-b then d)
+#   agentctl nudge "<text>"     type a message to the PM (e.g. an answer to its question)
+#   agentctl ba [args]          talk to the BA yourself (product discovery); not part of the loop
+#   agentctl logs               watchdog + Slack log
+#   agentctl doctor             check the whole setup
+set -uo pipefail
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+cd "$ROOT" || exit 1
+SESSION=${AGENTLOOP_SESSION:-agentloop}
+RT=ops/.runtime; mkdir -p "$RT" ops/handoff
+[ -f ops/STATE ] || echo STOPPED > ops/STATE
+
+c_ok=$'\033[32m'; c_warn=$'\033[33m'; c_err=$'\033[31m'; c_dim=$'\033[2m'; c_off=$'\033[0m'
+say()  { echo "${c_ok}agentctl:${c_off} $*"; }
+warn() { echo "${c_warn}agentctl:${c_off} $*" >&2; }
+die()  { echo "${c_err}agentctl:${c_off} $*" >&2; exit 1; }
+
+state()      { tr -d '[:space:]' < ops/STATE; }
+set_state()  { echo "$1" > ops/STATE.tmp && mv ops/STATE.tmp ops/STATE; }
+alive()      { tmux has-session -t "$SESSION" 2>/dev/null; }
+pm_dead()    { [ "$(tmux display-message -p -t "$SESSION:pm" '#{pane_dead}' 2>/dev/null || echo 1)" = "1" ]; }
+pm_idle()    { [ -f "$RT/pm-idle" ]; }
+send_pm()    { tmux send-keys -t "$SESSION:pm" -l "$1"; sleep 0.5; tmux send-keys -t "$SESSION:pm" Enter; }
+
+preflight() {
+  command -v claude >/dev/null || die "claude not found (run .devcontainer/post-create.sh)"
+  command -v tmux   >/dev/null || die "tmux not found"
+  gh auth status >/dev/null 2>&1 || die "gh not logged in: gh auth login && gh auth refresh -s project"
+  [ -f ops/board.json ] || die "no ops/board.json: run scripts/bootstrap-github.sh"
+  [ "$(id -u)" != 0 ] || die "do not run as root (Claude Code refuses to skip permissions as root)"
+  [ -f ops/handoff/CURRENT.md ] || cp ops/handoff/TEMPLATE.md ops/handoff/CURRENT.md
+}
+
+cmd_start() {
+  local resume=""; [ "${1:-}" = "--resume" ] && resume="--continue"
+  preflight
+  local prev; prev=$(state)
+  if alive && ! pm_dead; then
+    if [ "$prev" = "RUNNING" ]; then say "already running. agentctl status / attach"; return; fi
+    set_state RUNNING
+    rm -f "$RT/pm-idle"
+    send_pm "[human] Loop resumed (was $prev). Re-read ops/handoff/CURRENT.md, re-check the board, and continue."
+    scripts/notify.sh info "Loop resumed (was $prev)." >/dev/null
+    say "resumed (was $prev)"; return
+  fi
+  alive && tmux kill-session -t "$SESSION"
+  set_state RUNNING
+  rm -f "$RT/pm-idle" "$RT/pending-nudge" "$RT/current-agent"
+  local claude_bin; claude_bin=$(command -v claude)
+  tmux new-session -d -s "$SESSION" -n pm -c "$ROOT" \
+    "env AGENTLOOP_LOOP=1 PATH='$PATH' '$claude_bin' --agent pm --dangerously-skip-permissions $resume"
+  tmux set-option -t "$SESSION" remain-on-exit on >/dev/null
+  tmux set-option -t "$SESSION" history-limit 20000 >/dev/null
+  tmux new-window -d -t "$SESSION" -n watchdog -c "$ROOT" "scripts/watchdog.sh"
+  scripts/notify.sh info "Loop started$( [ -n "$resume" ] && echo ' (continuing last conversation)')." >/dev/null
+  say "started. tmux session '$SESSION' (windows: pm, watchdog)"
+  echo "  ${c_dim}first run? do 'agentctl attach' once to accept any one-time prompts, then Ctrl-b d${c_off}"
+}
+
+cmd_pause() {
+  [ "$(state)" = "RUNNING" ] || { say "not running (STATE=$(state))"; return; }
+  set_state PAUSED
+  scripts/notify.sh info "Loop paused by you. Agents halt at their next action." >/dev/null
+  say "PAUSED. Agents stop at their next action and the PM writes the handoff. 'agentctl resume' to continue."
+}
+
+cmd_stop() {
+  local now=false; [ "${1:-}" = "--now" ] && now=true
+  set_state STOPPED
+  if alive; then
+    if ! $now && ! pm_dead && ! pm_idle; then
+      say "STOPPED. Waiting up to 5 min for the PM to write the handoff (Ctrl-C or --now to skip)..."
+      for _ in $(seq 60); do pm_idle && break; sleep 5; done
+    fi
+    tmux kill-session -t "$SESSION"
+  fi
+  rm -f "$RT/pm-idle" "$RT/current-agent"
+  scripts/notify.sh info "Loop stopped." >/dev/null
+  say "stopped. Handoff: ops/handoff/CURRENT.md"
+}
+
+cmd_status() {
+  local quiet=false; [ "${1:-}" = "--quiet" ] && quiet=true
+  local st; st=$(state)
+  local proc="not running"
+  if alive; then
+    if pm_dead; then proc="${c_err}PM process exited${c_off}"
+    elif pm_idle; then proc="PM idle (waiting)"
+    else proc="PM working$( [ -f "$RT/current-agent" ] && echo " → subagent: $(cat "$RT/current-agent")")"; fi
+  fi
+  echo "STATE: $st   |   $proc"
+  $quiet && return 0
+  if [ -s ops/handoff/CURRENT.md ]; then
+    echo; echo "Handoff:"; grep -E '^\*\*(Updated|Phase|Current ticket|Next step|Waiting on)' ops/handoff/CURRENT.md | sed 's/^/  /'
+  fi
+  [ -f "$RT/activity.log" ] && { echo; echo "Recent activity:"; tail -8 "$RT/activity.log" | sed 's/^/  /'; }
+  [ -f "$RT/notify.log" ]   && { echo; echo "Recent Slack:";   tail -5 "$RT/notify.log" | cut -f1,2,3 | sed 's/^/  /'; }
+  [ -f ops/board.json ] && { echo; echo "Board: $(jq -r .url ops/board.json)"; }
+}
+
+cmd_attach() { alive || die "not running"; exec tmux attach -t "$SESSION:pm"; }
+
+cmd_nudge() {
+  [ -n "${1:-}" ] || die 'usage: agentctl nudge "message"'
+  alive && ! pm_dead || die "not running"
+  send_pm "[human] $*"; say "sent"
+}
+
+cmd_ba() {
+  if alive && [ "$(state)" = "RUNNING" ]; then
+    warn "the loop is RUNNING in the same checkout. Consider 'agentctl pause' first so you and the PM don't collide."
+  fi
+  exec env -u AGENTLOOP_LOOP claude --agent ba "$@"
+}
+
+cmd_logs() {
+  echo "== watchdog"; tail -20 "$RT/watchdog.log" 2>/dev/null || echo "(none)"
+  echo "== slack";    tail -20 "$RT/notify.log" 2>/dev/null || echo "(none)"
+  echo "== api errors"; tail -10 "$RT/errors.log" 2>/dev/null || echo "(none)"
+}
+
+cmd_doctor() {
+  local bad=0
+  chk() { if eval "$2" >/dev/null 2>&1; then echo "  ${c_ok}✓${c_off} $1"; else echo "  ${c_err}✗${c_off} $1 ${c_dim}— $3${c_off}"; bad=1; fi; }
+  echo "Tools"
+  chk "claude"            "command -v claude"       "run .devcontainer/post-create.sh"
+  chk "java 21"           "java -version 2>&1 | grep -q '\"21'" "Java 21 feature missing"
+  chk "maven"             "command -v mvn"          ""
+  chk "node 22"           "node -v | grep -q '^v22'" ""
+  chk "angular cli"       "command -v ng"           "npm i -g @angular/cli"
+  chk "docker (Testcontainers)" "docker info"       "docker-in-docker not running; rebuild container"
+  chk "tmux, jq, gitleaks" "command -v tmux && command -v jq && command -v gitleaks" ""
+  chk "not root"          "[ \$(id -u) != 0 ]"      "use the vscode user"
+  echo "Accounts"
+  chk "claude logged in"  "[ -n \"\$(ls -A \${CLAUDE_CONFIG_DIR:-\$HOME/.claude} 2>/dev/null)\" ]" "run: claude  (then /login)"
+  chk "gh logged in"      "gh auth status"          "gh auth login"
+  chk "gh project scope"  "gh auth status 2>&1 | grep -q \"'project'\"" "gh auth refresh -s project"
+  chk "Slack webhook set" "grep -Eq '^SLACK_WEBHOOK_URL=https://hooks.slack.com/' .env" "edit .env"
+  echo "Repo"
+  chk "git remote origin" "git remote get-url origin" "git remote add origin <url>"
+  chk "pre-commit hook wired" "[ \"\$(git config core.hooksPath)\" = .githooks ]" "git config core.hooksPath .githooks"
+  chk "board configured"  "[ -f ops/board.json ]"   "scripts/bootstrap-github.sh"
+  chk "main protected"    "gh api repos/\$(gh repo view --json nameWithOwner -q .nameWithOwner)/branches/main/protection" "scripts/protect-main.sh (needs a public repo or a paid plan)"
+  chk "hooks executable"  "[ -x scripts/hooks/guard.sh ]" "chmod +x scripts/hooks/*.sh"
+  chk "guard blocks push to main" "echo '{\"tool_name\":\"Bash\",\"agent_type\":\"dev\",\"tool_input\":{\"command\":\"git push origin main\"}}' | scripts/hooks/guard.sh | grep -q deny" "guard.sh broken"
+  echo
+  [ $bad = 0 ] && say "all good" || warn "fix the ✗ items above"
+}
+
+case "${1:-}" in
+  start)  shift; cmd_start "$@" ;;
+  resume) shift; cmd_start "$@" ;;
+  pause)  cmd_pause ;;
+  stop)   shift; cmd_stop "$@" ;;
+  status) shift; cmd_status "$@" ;;
+  attach) cmd_attach ;;
+  nudge)  shift; cmd_nudge "$*" ;;
+  ba)     shift; cmd_ba "$@" ;;
+  logs)   cmd_logs ;;
+  doctor) cmd_doctor ;;
+  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

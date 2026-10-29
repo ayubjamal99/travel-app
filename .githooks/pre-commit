@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# 1) No commits directly on main (work on a branch, merge via PR).
+# 2) gitleaks scan of staged changes.
+set -euo pipefail
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+if [ "$branch" = "main" ] && [ "${ALLOW_MAIN_COMMIT:-}" != "1" ]; then
+  echo "pre-commit: refusing to commit on main. Create a branch (feat/<issue>-<slug>)." >&2
+  echo "            (Humans only, one-off: ALLOW_MAIN_COMMIT=1 git commit ...)" >&2
+  exit 1
+fi
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not installed; refusing to commit without a secret scan." >&2
+  exit 1
+fi
+
+# gitleaks >= 8.19 uses `git --staged`; older versions use `protect --staged`
+if gitleaks git --help >/dev/null 2>&1; then
+  gitleaks git --pre-commit --staged --redact --no-banner -v
+else
+  gitleaks protect --staged --redact -v
+fi

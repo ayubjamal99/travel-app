@@ -1,0 +1,45 @@
+name: User story
+description: A user-facing slice of the travel planner, with acceptance criteria
+title: "[Story] "
+labels: ["story"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: Story
+      description: As a <persona>, I want <capability>, so that <outcome>.
+      placeholder: As a traveller, I want ..., so that ...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why now, link to roadmap item in docs/product/, constraints.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Numbered, testable, Given/When/Then. QA tests exactly these.
+      placeholder: |
+        AC1 — Given ..., when ..., then ...
+        AC2 — Given ..., when ..., then ...
+    validations:
+      required: true
+  - type: dropdown
+    id: ui
+    attributes:
+      label: Has UI?
+      description: If yes, the UX agent writes a screen spec before Dev starts.
+      options: ["Yes", "No"]
+    validations:
+      required: true
+  - type: textarea
+    id: oos
+    attributes:
+      label: Out of scope
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      options: ["S (≤ half a day)", "M (≤ 1 day)", "L (split it)"]

@@ -1,0 +1,54 @@
+{
+  "name": "travel-planner-agents",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "jdkDistro": "tem",
+      "installMaven": "true"
+    },
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+
+  // Non-root on purpose: Claude Code refuses to skip permissions as root.
+  "remoteUser": "vscode",
+  "shutdownAction": "none",
+
+  "containerEnv": {
+    // Keep every Claude Code file (login, settings, trust, transcripts) on the volume below.
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+    "GH_CONFIG_DIR": "/home/vscode/.config/gh",
+    // Used for timestamps in Slack and handoff files. Change if you move.
+    "TZ": "Asia/Karachi",
+    // Testcontainers inside docker-in-docker
+    "TESTCONTAINERS_HOST_OVERRIDE": "host.docker.internal"
+  },
+
+  // Named volumes so your Claude and GitHub logins (and the Maven cache) survive rebuilds.
+  "mounts": [
+    "source=tp-claude-config,target=/home/vscode/.claude,type=volume",
+    "source=tp-gh-config,target=/home/vscode/.config/gh,type=volume",
+    "source=tp-m2,target=/home/vscode/.m2,type=volume"
+  ],
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "bash scripts/agentctl status --quiet || true",
+
+  "forwardPorts": [8080, 4200],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-spring-boot",
+        "angular.ng-template",
+        "dbaeumer.vscode-eslint",
+        "ms-playwright.playwright",
+        "github.vscode-github-actions",
+        "timonwong.shellcheck"
+      ]
+    }
+  }
+}

@@ -1,0 +1,33 @@
+name: Bug
+description: Something does not behave as specified
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: story
+    attributes:
+      label: Related story / PR
+      placeholder: "#12"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected (cite the AC if there is one)
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual (paste the failing test output)
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options: ["blocker", "major", "minor"]
