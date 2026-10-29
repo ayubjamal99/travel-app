@@ -57,3 +57,11 @@ No `controllers/ services/ repositories/` layer packages.
 - `@WebMvcTest` for controllers, plain JUnit for services, `@DataJpaTest` + Testcontainers Postgres
   for repositories, one `@SpringBootTest` smoke test per feature.
 - Use `@ServiceConnection` with a `PostgreSQLContainer` for Testcontainers wiring.
+
+## Local database (dev container)
+- Docker runs on the host (docker-outside-of-docker). Containers you start are reached at
+  `host.docker.internal`, not `localhost`.
+- Add `compose.yaml` at the repo root with a `postgres:16-alpine` service on port 5432
+  (user/db `travel`, password from `.env` as `POSTGRES_PASSWORD`).
+- Local datasource: `jdbc:postgresql://${DB_HOST:host.docker.internal}:5432/travel`.
+- Start it with `docker compose up -d db`; tests keep using Testcontainers.
